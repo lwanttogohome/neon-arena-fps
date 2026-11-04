@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEON ARENA FPS</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07101e;color:#eef8ff;font-family:system-ui,Arial}
+#game{position:absolute;inset:0}.hud{position:absolute;inset:0;pointer-events:none;text-shadow:0 2px 8px #000}
+.panel{background:rgba(6,14,29,.84);border:1px solid #39708c;border-radius:10px;padding:10px 14px;backdrop-filter:blur(8px)}
+.top{position:absolute;top:12px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.brand b{letter-spacing:2px}.cyan{color:#54efff}.pink{color:#ff579d}.brand small{display:block;color:#9cb4d0;font-size:10px;letter-spacing:2px}
+.score{display:flex;gap:14px;font-size:20px;font-weight:900}.timer{font-variant-numeric:tabular-nums}
+#map{width:112px;height:92px;background:#0b1a2a;border-radius:8px;border:1px solid #39708c}
+.cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:18px;height:18px}
+.cross:before,.cross:after{content:"";position:absolute;background:#e8fcff;box-shadow:0 0 8px #54efff}.cross:before{left:8px;width:2px;height:18px}.cross:after{top:8px;height:2px;width:18px}
+.bottom{position:absolute;bottom:14px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:end}
+.label{font-size:10px;color:#9cb4d0;letter-spacing:2px}.value{font-size:25px;font-weight:900}.bar{height:7px;width:170px;background:#24364c;border-radius:9px;margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#21dce8,#7bffd5)}
+#feed{position:absolute;right:14px;top:120px;text-align:right;font-size:12px}.feedline{background:#071425c9;margin:5px 0;padding:6px 8px;border-radius:5px}
+#overlay{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:min(92%,440px);pointer-events:auto;text-align:center}
+#overlay .panel{padding:24px;box-shadow:0 0 45px #051b35}#overlay h2{margin:0 0 8px;letter-spacing:2px;font-size:27px}
+#overlay p{font-size:13px;line-height:1.6;color:#b6cce4}
+button{border:0;border-radius:8px;padding:12px 24px;background:linear-gradient(100deg,#35dff4,#70aaff);font-weight:900;cursor:pointer}
+#status{font-size:11px;color:#9db5d0}#reload{position:absolute;right:14px;bottom:78px;pointer-events:auto;display:none}
+@media(max-width:600px){.score{font-size:14px;gap:7px}.panel{padding:8px}.bar{width:120px}.value{font-size:20px}#map{width:75px;height:65px}}
+</style></head><body><div id="game"></div>
+<div class="hud"><div class="top">
+<div class="panel brand"><b>NEON ARENA <span class="cyan">FPS</span></b><small>TEAM DEATHMATCH · MAX 16</small></div>
+<div class="panel score"><span class="cyan" id="blue">0</span><span>:</span><span class="pink" id="red">0</span><span class="timer" id="timer">10:00</span></div><canvas id="map" width="112" height="92"></canvas></div>
+<div class="cross"></div><div id="feed"></div>
+<div class="bottom"><div class="panel"><div class="label">HEALTH</div><div class="value" id="health">100</div><div class="bar"><i id="healthbar"></i></div></div>
+<div class="panel" style="text-align:right"><div class="label">PLASMA RIFLE</div><div class="value"><span id="ammo">30</span><span style="font-size:13px;color:#9cb4d0"> / 90</span></div></div></div>
+<button id="reload">RELOAD · R</button>
+<div id="overlay"><div class="panel"><h2>ENTER THE <span class="cyan">ARENA</span></h2><p>WASD 이동 · 마우스 조준 · 클릭 발사 · Space 점프<br>상대 팀을 처치해 점수를 올리세요.</p><button id="start">전투 시작</button><p id="status">연결 상태: 연습 모드</p></div></div>
+</div>
+<script>const SERVER_URL=__SERVER_URL_JSON__;const NICKNAME=__NICKNAME_JSON__;</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+(()=>{
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x081425);scene.fog=new THREE.Fog(0x081425,25,85);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,150);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;document.getElementById('game').appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0x9bcfff,0x172033,2));const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(7,18,4);light.castShadow=true;scene.add(light);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(70,70),new THREE.MeshStandardMaterial({color:0x17283c,roughness:.85}));floor.rotation.x=-Math.PI/2;floor.position.y=-.12;floor.receiveShadow=true;scene.add(floor);const grid=new THREE.GridHelper(70,35,0x2785a5,0x20384f);grid.position.y=-.1;scene.add(grid);
+function block(x,y,z,sx,sy,sz,c){const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshStandardMaterial({color:c,metalness:.3,roughness:.5,emissive:c,emissiveIntensity:.12}));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m}
+for(let i=-4;i<=4;i++){block(i*7,1.2,-25,3,2.4,3,0x1c3b59);block(i*7,1.2,25,3,2.4,3,0x1c3b59);block(-25,1.2,i*7,3,2.4,3,0x1c3b59);block(25,1.2,i*7,3,2.4,3,0x1c3b59)}
+for(let i=0;i<8;i++){let a=i*Math.PI/4;let b=block(Math.cos(a)*12,1.2,Math.sin(a)*12,3,2.4,3,i%2?0x183d5e:0x342b5b);b.rotation.y=a}
+const remotes=new Map();
+function avatar(team){const g=new THREE.Group();const color=team==='blue'?0x38dff3:0xff4e9b;const body=new THREE.Mesh(new THREE.CapsuleGeometry(.4,.8,4,8),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.15}));body.position.y=1;g.add(body);const head=new THREE.Mesh(new THREE.SphereGeometry(.25,12,10),new THREE.MeshStandardMaterial({color:0xd8efff}));head.position.y=1.7;g.add(head);return g}
+const player={x:0,y:1.7,z:10,yaw:0,pitch:0,vy:0};camera.position.set(player.x,player.y,player.z);camera.rotation.order='YXZ';scene.add(camera);
+const gun=new THREE.Group();camera.add(gun);const gunbody=new THREE.Mesh(new THREE.BoxGeometry(.22,.2,.72),new THREE.MeshStandardMaterial({color:0x263b55,metalness:.8,roughness:.25}));gunbody.position.set(.28,-.25,-.55);gun.add(gunbody);const muzzle=new THREE.PointLight(0x50eaff,0,5);muzzle.position.set(.28,-.2,-1);gun.add(muzzle);
+let socket=null,playing=false,locked=false,ammo=30,health=100,team='blue',lastShot=0,seconds=600;
+const keys={};addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&playing&&player.y<=1.71)player.vy=6.5;if(e.code==='KeyR')reload()});addEventListener('keyup',e=>keys[e.code]=false);
+document.addEventListener('pointerlockchange',()=>locked=document.pointerLockElement===renderer.domElement);
+document.addEventListener('mousemove',e=>{if(locked){player.yaw-=e.movementX*.0022;player.pitch=Math.max(-1.2,Math.min(1.2,player.pitch-e.movementY*.0022))}});
+renderer.domElement.addEventListener('click',()=>{if(playing&&!locked)renderer.domElement.requestPointerLock()});
+document.getElementById('start').onclick=()=>{playing=true;document.getElementById('overlay').style.display='none';renderer.domElement.requestPointerLock();if(SERVER_URL&&window.io){socket=io(SERVER_URL,{transports:['websocket','polling'],timeout:8000});socket.on('connect',()=>{document.getElementById('status').textContent='연결 상태: 온라인';socket.emit('join',{name:NICKNAME})});socket.on('connect_error',()=>{document.getElementById('status').textContent='서버 연결 실패 · 연습 모드'});socket.on('join_error',d=>{addFeed(d.message)});socket.on('joined',d=>{team=d.team||'blue'});socket.on('state',d=>{document.getElementById('blue').textContent=d.scores.blue;document.getElementById('red').textContent=d.scores.red;d.players.forEach(p=>{if(p.id!==socket.id)updateRemote(p)})});socket.on('player_moved',updateRemote);socket.on('player_left',id=>removeRemote(id));socket.on('feed',d=>addFeed(d.text));socket.on('damage',d=>{if(d.target===socket.id){health=d.health;updateHealth()}});socket.on('respawn',d=>{if(d.id===socket.id){player.x=d.x;player.z=d.z;health=100;updateHealth()}});socket.on('scores',s=>{document.getElementById('blue').textContent=s.blue;document.getElementById('red').textContent=s.red})}};
+function updateRemote(p){let r=remotes.get(p.id);if(!r){r=avatar(p.team);scene.add(r);remotes.set(p.id,r)}r.position.set(p.x,0,p.z);r.rotation.y=p.yaw||0}
+function removeRemote(id){if(remotes.has(id)){scene.remove(remotes.get(id));remotes.delete(id)}}
+function addFeed(t){const f=document.getElementById('feed'),d=document.createElement('div');d.className='feedline';d.textContent=t;f.prepend(d);while(f.children.length>4)f.lastChild.remove();setTimeout(()=>d.remove(),4500)}
+function updateHealth(){document.getElementById('health').textContent=health;document.getElementById('healthbar').style.width=health+'%'}
+function reload(){ammo=30;document.getElementById('ammo').textContent=ammo}
+function shoot(){const now=performance.now();if(!playing||!locked||now-lastShot<150)return;lastShot=now;if(ammo<=0){reload();return}ammo--;document.getElementById('ammo').textContent=ammo;muzzle.intensity=3;setTimeout(()=>muzzle.intensity=0,70);gun.position.z=.08;setTimeout(()=>gun.position.z=0,70);if(socket?.connected)socket.emit('shoot',{yaw:player.yaw,pitch:player.pitch})}
+addEventListener('mousedown',e=>{if(e.button===0)shoot()});
+function drawMap(){const c=document.getElementById('map'),ctx=c.getContext('2d');ctx.fillStyle='#0c1d30';ctx.fillRect(0,0,112,92);ctx.strokeStyle='#28506b';for(let x=10;x<112;x+=18){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,92);ctx.stroke()}for(let y=10;y<92;y+=18){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(112,y);ctx.stroke()}ctx.fillStyle=team==='blue'?'#54efff':'#ff579d';ctx.beginPath();ctx.arc(56+player.x*1.2,46-player.z*1.2,4,0,7);ctx.fill();remotes.forEach(r=>{ctx.fillStyle='#ff579d';ctx.beginPath();ctx.arc(56+r.position.x*1.2,46-r.position.z*1.2,3,0,7);ctx.fill()})}
+let prev=performance.now(),sendAt=0;function animate(now){requestAnimationFrame(animate);const dt=Math.min((now-prev)/1000,.05);prev=now;if(playing){const speed=9.5,forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw)),right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));if(keys.KeyW) {player.x+=forward.x*speed*dt;player.z+=forward.z*speed*dt}if(keys.KeyS){player.x-=forward.x*speed*dt;player.z-=forward.z*speed*dt}if(keys.KeyA){player.x-=right.x*speed*dt;player.z-=right.z*speed*dt}if(keys.KeyD){player.x+=right.x*speed*dt;player.z+=right.z*speed*dt}player.x=Math.max(-29,Math.min(29,player.x));player.z=Math.max(-29,Math.min(29,player.z));player.vy-=16*dt;player.y+=player.vy*dt;if(player.y<1.7){player.y=1.7;player.vy=0}camera.position.set(player.x,player.y,player.z);camera.rotation.set(player.pitch,player.yaw,0,'YXZ');if(socket?.connected&&now-sendAt>80){socket.emit('move',{x:player.x,y:player.y,z:player.z,yaw:player.yaw});sendAt=now}seconds=Math.max(0,seconds-dt);document.getElementById('timer').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(Math.floor(seconds%60)).padStart(2,'0')}drawMap();renderer.render(scene,camera)}
+requestAnimationFrame(animate);addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+})();
+</script></body></html>
